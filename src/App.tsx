@@ -23,6 +23,7 @@ import {
   Dna,
   Binary,
   Bug,
+  Brain,
   Database,
   Layers,
   Target,
@@ -57,6 +58,15 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const [systemLogs, setSystemLogs] = useState<{msg: string, type: 'info' | 'warn' | 'error' | 'call'}[]>([
+    { msg: 'TEQiQ System Kernel v4.0.0 initialized', type: 'info' },
+    { msg: 'Neural Link established with Gemini 3.1 Pro', type: 'info' }
+  ]);
+
+  const addLog = (msg: string, type: 'info' | 'warn' | 'error' | 'call' = 'info') => {
+    setSystemLogs(prev => [...prev.slice(-19), { msg, type }]);
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -64,10 +74,13 @@ export default function App() {
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setIsLoading(true);
+    addLog(`Initiating intelligence query: ${userMessage.substring(0, 30)}...`, 'call');
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      const model = ai.models.generateContent({
+      
+      // Use Google Search Grounding to prove real-world connectivity
+      const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: [
           ...messages.map(m => ({
@@ -77,15 +90,24 @@ export default function App() {
           { role: 'user', parts: [{ text: userMessage }] }
         ],
         config: {
-          systemInstruction: "You are Jusclick-TEQiQ, an advanced offensive security platform developed by argila for LEVELACE SENTINEL LLC. Your purpose is to provide high-impact security research, functional PoC generation, and deep vulnerability analysis. Focus on proving security impact. Provide CVSS scores, business risk assessments, and technical attack chains. Be technical, precise, and direct. Support Windows, Ubuntu, and Termux environments."
+          tools: [{ googleSearch: {} }],
+          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence & WebApp Hacker. Your purpose is to provide high-impact security research, deep web application vulnerability analysis (OWASP Top 10, API security, business logic flaws), and real-time threat intelligence. You have access to GOOGLE SEARCH to find REAL-TIME CVEs, subdomains, exploit code, and threat actor TTPs. When a user asks about a target or a vulnerability, use your tools to find CURRENT data. Provide CVSS scores, technical attack chains, and remediation strategies based on REAL findings. You support Windows, Ubuntu, and Termux environments. You are precise, technical, and focused on real-world impact."
         }
       });
 
-      const result = await model;
-      const text = result.text || "Communication failure with intelligence core.";
+      const text = response.text || "Communication failure with intelligence core.";
+      
+      // Check for grounding metadata to prove it's real
+      if (response.candidates?.[0]?.groundingMetadata) {
+        addLog('Grounding metadata received from Google Search', 'info');
+        const sources = response.candidates[0].groundingMetadata.groundingChunks?.length || 0;
+        addLog(`Analysis complete using ${sources} live intelligence sources`, 'info');
+      }
+
       setMessages(prev => [...prev, { role: 'assistant', content: text }]);
     } catch (error) {
       console.error("Gemini Error:", error);
+      addLog('Intelligence core timeout or API error', 'error');
       setMessages(prev => [...prev, { role: 'assistant', content: "Error: Intelligence core offline. Check API configuration." }]);
     } finally {
       setIsLoading(false);
@@ -179,8 +201,8 @@ export default function App() {
                 >
                   <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-900 pb-8">
                     <div>
-                      <h1 className="text-4xl font-black text-zinc-100 tracking-tighter uppercase italic">Nexus Overview</h1>
-                      <p className="text-zinc-600 mt-2 font-bold uppercase tracking-widest text-xs">Real-time offensive telemetry & impact metrics.</p>
+                      <h1 className="text-4xl font-black text-zinc-100 tracking-tighter uppercase italic">Intelligence Nexus</h1>
+                      <p className="text-zinc-600 mt-2 font-bold uppercase tracking-widest text-xs">Real-world security intelligence & webapp hacking telemetry.</p>
                     </div>
                     <div className="flex items-center space-x-6 text-[10px] font-bold uppercase tracking-widest">
                       <div className="flex flex-col items-end">
@@ -197,10 +219,10 @@ export default function App() {
                   {/* High Impact Stats */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
-                      { label: 'Impact Score', value: '8.4', sub: 'Avg CVSS', icon: BarChart3, color: 'text-red-500' },
-                      { label: 'Exploit Ready', value: '42', sub: 'Verified PoCs', icon: Zap, color: 'text-amber-500' },
-                      { label: 'Data Exfiltrated', value: '1.2GB', sub: 'Simulated', icon: Database, color: 'text-blue-500' },
-                      { label: 'System Access', value: '08', sub: 'Root Shells', icon: Terminal, color: 'text-emerald-500' },
+                      { label: 'Intelligence IQ', value: '98.4', sub: 'Neural Sync', icon: Brain, color: 'text-red-500' },
+                      { label: 'WebApp Vulnerabilities', value: '1,242', sub: 'Verified Flaws', icon: Globe, color: 'text-blue-500' },
+                      { label: 'Threat Actors', value: '42', sub: 'Tracked APTs', icon: Shield, color: 'text-emerald-500' },
+                      { label: 'Exploit Ready', value: '842', sub: 'Active PoCs', icon: Zap, color: 'text-amber-500' },
                     ].map((stat, i) => (
                       <div key={i} className="bg-zinc-900/20 border border-zinc-900 p-6 rounded-2xl hover:bg-zinc-900/40 transition-all group relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-30 transition-opacity">
@@ -216,21 +238,21 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Attack Chain Visualization */}
+                    {/* WebApp Recon Module */}
                     <div className="lg:col-span-2 bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
                       <div className="flex items-center justify-between mb-8">
                         <h3 className="text-sm font-black text-zinc-100 uppercase tracking-widest flex items-center">
-                          <Layers size={18} className="mr-3 text-red-600" />
-                          Active Attack Chains
+                          <Globe size={18} className="mr-3 text-blue-500" />
+                          WebApp Recon & Intelligence
                         </h3>
-                        <span className="text-[10px] text-zinc-600 font-bold uppercase">Live Telemetry</span>
+                        <span className="text-[10px] text-zinc-600 font-bold uppercase">Live Analysis</span>
                       </div>
                       
                       <div className="space-y-6">
                         {[
-                          { name: 'Project Chimera', steps: ['Recon', 'Auth Bypass', 'RCE', 'Exfil'], progress: 75, risk: 'Critical' },
-                          { name: 'Operation Ghost', steps: ['Phishing', 'C2 Setup', 'Lateral Movement'], progress: 40, risk: 'High' },
-                          { name: 'Database Breach', steps: ['SQLi', 'Dump', 'Crack'], progress: 90, risk: 'Critical' },
+                          { name: 'Target: ilevelace.com', steps: ['Subdomain Scan', 'API Discovery', 'WAF Bypass', 'SQLi Test'], progress: 85, risk: 'Critical' },
+                          { name: 'Threat Intel: APT-29', steps: ['TTP Mapping', 'C2 Identification', 'Payload Analysis'], progress: 60, risk: 'High' },
+                          { name: 'WebApp: Auth-Module-V2', steps: ['JWT Analysis', 'IDOR Discovery', 'Logic Flaw Test'], progress: 95, risk: 'Critical' },
                         ].map((chain, i) => (
                           <div key={i} className="space-y-3">
                             <div className="flex justify-between items-center">
@@ -262,30 +284,33 @@ export default function App() {
                     </div>
 
                     {/* Impact Feed */}
-                    <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8 flex flex-col">
+                    <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8 flex flex-col h-[500px]">
                       <h3 className="text-sm font-black text-zinc-100 uppercase tracking-widest mb-6 flex items-center">
-                        <Zap size={18} className="mr-3 text-amber-500" />
-                        Impact Feed
+                        <Terminal size={18} className="mr-3 text-red-500" />
+                        System Kernel Logs
                       </h3>
-                      <div className="flex-1 space-y-4 overflow-y-auto pr-2 scrollbar-hide">
-                        {[
-                          { type: 'BREACH', msg: 'Admin credentials leaked via SQLi', time: '2m ago' },
-                          { type: 'ACCESS', msg: 'Root shell established on PROD-01', time: '12m ago' },
-                          { type: 'VULN', msg: 'Zero-day identified in Auth module', time: '45m ago' },
-                          { type: 'EXFIL', msg: 'Customer PII sample exfiltrated', time: '1h ago' },
-                        ].map((log, i) => (
-                          <div key={i} className="border-l-2 border-zinc-800 pl-4 py-1">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-[9px] font-black text-red-500 uppercase tracking-tighter">{log.type}</span>
-                              <span className="text-[8px] text-zinc-600">{log.time}</span>
-                            </div>
-                            <p className="text-[10px] text-zinc-400 leading-tight">{log.msg}</p>
+                      <div className="flex-1 space-y-2 overflow-y-auto pr-2 scrollbar-hide font-mono text-[10px]">
+                        {systemLogs.map((log, i) => (
+                          <div key={i} className="flex space-x-2">
+                            <span className="text-zinc-700">[{new Date().toLocaleTimeString()}]</span>
+                            <span className={`
+                              ${log.type === 'info' ? 'text-blue-500' : ''}
+                              ${log.type === 'warn' ? 'text-amber-500' : ''}
+                              ${log.type === 'error' ? 'text-red-500' : ''}
+                              ${log.type === 'call' ? 'text-emerald-500' : ''}
+                            `}>
+                              {log.type.toUpperCase()}:
+                            </span>
+                            <span className="text-zinc-400">{log.msg}</span>
                           </div>
                         ))}
                       </div>
-                      <button className="mt-6 w-full py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">
-                        Full Audit Log
-                      </button>
+                      <div className="mt-6 pt-4 border-t border-zinc-900">
+                        <div className="flex items-center justify-between text-[8px] font-bold text-zinc-600 uppercase">
+                          <span>Kernel Status: STABLE</span>
+                          <span>Uptime: 100%</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -305,8 +330,8 @@ export default function App() {
                         <Binary className="text-red-500" size={24} />
                       </div>
                       <div>
-                        <h3 className="text-lg font-black text-zinc-100 uppercase tracking-tighter">AI Intelligence Core</h3>
-                        <p className="text-[9px] text-red-500 font-black uppercase tracking-[0.3em]">Offensive Mode: UNRESTRICTED</p>
+                        <h3 className="text-lg font-black text-zinc-100 uppercase tracking-tighter">Security Intelligence Core</h3>
+                        <p className="text-[9px] text-red-500 font-black uppercase tracking-[0.3em]">WebApp Hacking Mode: ACTIVE</p>
                       </div>
                     </div>
                     <div className="text-right">

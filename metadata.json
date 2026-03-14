@@ -1,5 +1,9 @@
 {
-  "name": "Jusclick-TEQiQ",
-  "description": "A high-impact security offensive platform by argila (LEVELACE SENTINEL LLC). Advanced vulnerability research, PoC generation, and impact assessment suite.",
-  "requestFramePermissions": []
+  "name": "Jusclick-TEQiQ: Security Intelligence & WebApp Hacker",
+  "description": "A professional-grade real-world security intelligence platform and web application hacking suite for advanced offensive operations.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
 }
