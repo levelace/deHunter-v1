@@ -204,18 +204,11 @@ async function startServer() {
       return res.status(403).json({ error: "Approval confirmation required for exploitation workflow" });
     }
 
-    const operationId = `OP-${Date.now().toString(36).toUpperCase()}`;
-    console.log(`[EXPLOIT] Authorized operation queued: ${operationId} (${type} on ${target}) approved by ${approvedBy}.`);
+    console.log(`[EXPLOIT] Request blocked: no mock/simulated execution for ${type} on ${target}. Approved by ${approvedBy}.`);
 
-    return res.status(202).json({
-      impact: {
-        status: "QUEUED",
-        operationId,
-        queueState: "AUTHORIZED_PENDING_EXECUTION",
-        approvedBy,
-        scopeConfirmed: approvalConfirmed,
-      },
-      message: "Operation accepted into authorized execution pipeline.",
+    return res.status(501).json({
+      error: "Execution engine disabled: mock/simulated exploit execution removed.",
+      details: "Connect a real controlled lab executor service to enable verified runs.",
       timestamp: new Date().toISOString(),
     });
   });

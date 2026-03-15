@@ -162,9 +162,6 @@ export default function App() {
       if (data.impact?.status === 'SUCCESS') {
         addLog(`EXPLOIT SUCCESSFUL. Access: ${data.impact.access}. Session: ${data.impact.sessionID}`, 'info');
         setActiveTab('impact');
-      } else if (data.impact?.status === 'QUEUED') {
-        addLog(`OPERATION QUEUED: ${data.impact.operationId}`, 'info');
-        setActiveTab('impact');
       } else if (data.impact?.reason) {
         addLog(`EXPLOIT FAILED: ${data.impact.reason}`, 'error');
       } else {
@@ -214,7 +211,7 @@ export default function App() {
         ],
         config: {
           tools: [{ googleSearch: {} }],
-          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence analyst for authorized operations. The platform supports LIVE network reconnaissance, CVE enrichment, and approval-gated operation workflows via backend APIs and Google Search grounding. Focus on real findings, verified attack paths, CVSS context, and concrete remediation guidance for the provided target."
+          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence analyst for authorized operations. The platform supports LIVE network reconnaissance and CVE enrichment via backend APIs and Google Search grounding. Do not claim active exploitation execution because runtime exploit execution is disabled unless an external controlled executor service is attached. Focus on real findings, verified attack paths, CVSS context, and concrete remediation guidance for the provided target."
         }
       });
 
@@ -770,8 +767,8 @@ export default function App() {
                       <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
                         <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Execution State</h3>
                         <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                          <p className="text-[10px] font-black uppercase text-amber-300">Controlled Execution Pipeline</p>
-                          <p className="text-[11px] text-zinc-300 mt-2">Authorized operations are accepted into a gated pipeline and tracked with operation IDs for controlled security ops.</p>
+                          <p className="text-[10px] font-black uppercase text-amber-300">Executor Offline</p>
+                          <p className="text-[11px] text-zinc-300 mt-2">Active exploit runtime is disabled in this repository build. Attach a controlled executor service to enable verified operations.</p>
                         </div>
                       </div>
 
@@ -780,7 +777,7 @@ export default function App() {
                         {exploitImpact ? (
                           <pre className="text-[10px] text-zinc-300 bg-black/40 border border-zinc-800 rounded-xl p-4 overflow-auto whitespace-pre-wrap">{JSON.stringify(exploitImpact, null, 2)}</pre>
                         ) : (
-                          <p className="text-[11px] text-zinc-500">No operation response captured yet.</p>
+                          <p className="text-[11px] text-zinc-500">No execution response captured.</p>
                         )}
                       </div>
                     </div>

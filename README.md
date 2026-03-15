@@ -10,7 +10,7 @@ This app provides:
 - Live target recon (DNS + HTTP/HTTPS header probing)
 - CVE enrichment through NVD API lookup
 - Findings analysis/recommendation workflow
-- Approval-gated operation request flow with tracked execution pipeline states
+- Approval-gated exploit request flow (local exploit runtime is intentionally disabled in this repo build)
 
 ---
 
@@ -84,8 +84,8 @@ The app runs at:
   - payload
   - approved-by identity
   - in-scope confirmation checkbox
-- Click **Submit Operation** to queue an authorized operation request.
-- Important: backend accepts authorized requests into a controlled pipeline and returns operation tracking metadata (`202`).
+- Click **Execute Exploit** to submit request.
+- Important: local exploit runtime is disabled by design; backend returns `501` until a controlled external executor service is integrated.
 
 ---
 
@@ -108,7 +108,7 @@ The app runs at:
 
 - `POST /api/exploit/execute`
   - Body requires: `target`, `payload`, `type`, `approvedBy`, `approvalConfirmed`
-  - Returns `202` with queued operation metadata for controlled execution workflows.
+  - Returns `501` in this repository build (executor offline).
 
 ---
 
@@ -122,5 +122,5 @@ npm run build
 
 ## Notes
 
-- This repository intentionally avoids fake exploit-success telemetry.
-- Operations are approval-gated and tracked through controlled pipeline responses with strict authorization/scope controls.
+- This repository intentionally avoids simulated exploit-success telemetry.
+- To enable verified exploit execution, connect a controlled external executor and keep strict authorization/scope controls.
