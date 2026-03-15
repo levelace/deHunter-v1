@@ -52,7 +52,109 @@ export default function App() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [intelStatus, setIntelStatus] = useState<any>(null);
+  const [scanResults, setScanResults] = useState<any>(null);
+  const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const [exploitImpact, setExploitImpact] = useState<any>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [showRawIntel, setShowRawIntel] = useState(false);
+  const [reconInput, setReconInput] = useState('');
+  const [forgeTarget, setForgeTarget] = useState('');
+  const [forgePayload, setForgePayload] = useState('');
+  const [forgeType, setForgeType] = useState('RCE');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/intel/status');
+        const data = await res.json();
+        setIntelStatus(data);
+      } catch (e) {
+        console.error("Failed to fetch intel status", e);
+      }
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleScan = async (target: string) => {
+    if (!target) return;
+    setIsScanning(true);
+    setScanResults(null);
+    setAnalysisResults(null);
+    addLog(`Initiating LIVE backend intelligence scan for: ${target}`, 'call');
+    try {
+      const res = await fetch('/api/intel/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target })
+      });
+      const data = await res.json();
+      setScanResults(data);
+      addLog(`Scan complete for ${target}. Found ${data.findings.length} intelligence points.`, 'info');
+    } catch (e) {
+      addLog(`Backend scan failed for ${target}`, 'error');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!scanResults) return;
+    addLog(`Running backend intelligence analysis for ${scanResults.target}...`, 'call');
+    try {
+      const res = await fetch('/api/intel/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ findings: scanResults.findings, target: scanResults.target })
+      });
+      const data = await res.json();
+      setAnalysisResults(data);
+      addLog(`Analysis complete. Generated ${data.strategies.length} exploit strategies.`, 'info');
+    } catch (e) {
+      addLog(`Analysis failed for ${scanResults.target}`, 'error');
+    }
+  };
+
+  const handleExecuteExploit = async () => {
+    if (!forgeTarget || !forgePayload) {
+      addLog("Execution blocked: Target and Payload required", 'warn');
+      return;
+    }
+    setIsExecuting(true);
+    setExploitImpact(null);
+    addLog(`DEPLOYING EXPLOIT: ${forgeType} -> ${forgeTarget}`, 'call');
+    
+    try {
+      const res = await fetch('/api/exploit/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: forgeTarget, payload: forgePayload, type: forgeType })
+      });
+      const data = await res.json();
+      
+      // Simulate live terminal feedback
+      for (const step of data.steps) {
+        await new Promise(r => setTimeout(r, step.delay));
+        addLog(step.msg, 'info');
+      }
+
+      setExploitImpact(data.impact);
+      if (data.impact.status === 'SUCCESS') {
+        addLog(`EXPLOIT SUCCESSFUL. Access: ${data.impact.access}. Session: ${data.impact.sessionID}`, 'info');
+        setActiveTab('impact'); // Switch to impact lab to see results
+      } else {
+        addLog(`EXPLOIT FAILED: ${data.impact.reason}`, 'error');
+      }
+    } catch (e) {
+      addLog("Exploit execution engine error", 'error');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -91,7 +193,7 @@ export default function App() {
         ],
         config: {
           tools: [{ googleSearch: {} }],
-          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence & WebApp Hacker. Your purpose is to provide high-impact security research, deep web application vulnerability analysis (OWASP Top 10, API security, business logic flaws), and real-time threat intelligence. You have access to GOOGLE SEARCH to find REAL-TIME CVEs, subdomains, exploit code, and threat actor TTPs. When a user asks about a target or a vulnerability, use your tools to find CURRENT data. Provide CVSS scores, technical attack chains, and remediation strategies based on REAL findings. You support Windows, Ubuntu, and Termux environments. You are precise, technical, and focused on real-world impact."
+          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence & WebApp Hacker. Your platform is a FULL-STACK system with a real Express backend capable of LIVE network probing and ACTIVE EXPLOIT EXECUTION. You have access to real-world intelligence via GOOGLE SEARCH and a custom BACKEND ENGINE. Your primary mission tonight is to FIND REAL BUGS. Use GOOGLE SEARCH to find the latest CVEs, zero-days, and misconfigurations for any target or technology the user provides. When a user provides a target, perform a LIVE scan using the 'Target Recon' module and then use your intelligence to cross-reference findings with real-world exploits. You provide technical attack chains, CVSS scores, and remediation strategies based on ACTUAL CURRENT DATA. You are precise, technical, and focused on real-world impact for LEVELACE SENTINEL LLC."
         }
       });
 
@@ -204,25 +306,25 @@ export default function App() {
                       <h1 className="text-4xl font-black text-zinc-100 tracking-tighter uppercase italic">Intelligence Nexus</h1>
                       <p className="text-zinc-600 mt-2 font-bold uppercase tracking-widest text-xs">Real-world security intelligence & webapp hacking telemetry.</p>
                     </div>
-                    <div className="flex items-center space-x-6 text-[10px] font-bold uppercase tracking-widest">
-                      <div className="flex flex-col items-end">
-                        <span className="text-zinc-600">Threat Level</span>
-                        <span className="text-red-500">CRITICAL</span>
+                      <div className="flex items-center space-x-6 text-[10px] font-bold uppercase tracking-widest">
+                        <div className="flex flex-col items-end">
+                          <span className="text-zinc-600">Threat Level</span>
+                          <span className="text-red-500">{intelStatus?.threatLevel || 'CRITICAL'}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-zinc-600">Active Nodes</span>
+                          <span className="text-zinc-100">{intelStatus?.activeNodes?.toLocaleString() || '1,204'}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-zinc-600">Active Nodes</span>
-                        <span className="text-zinc-100">1,204</span>
-                      </div>
-                    </div>
                   </div>
 
                   {/* High Impact Stats */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
                       { label: 'Intelligence IQ', value: '98.4', sub: 'Neural Sync', icon: Brain, color: 'text-red-500' },
-                      { label: 'WebApp Vulnerabilities', value: '1,242', sub: 'Verified Flaws', icon: Globe, color: 'text-blue-500' },
-                      { label: 'Threat Actors', value: '42', sub: 'Tracked APTs', icon: Shield, color: 'text-emerald-500' },
-                      { label: 'Exploit Ready', value: '842', sub: 'Active PoCs', icon: Zap, color: 'text-amber-500' },
+                      { label: 'WebApp Vulnerabilities', value: intelStatus?.verifiedFlaws || '1,242', sub: 'Verified Flaws', icon: Globe, color: 'text-blue-500' },
+                      { label: 'Threat Actors', value: intelStatus?.trackedAPTs || '42', sub: 'Tracked APTs', icon: Shield, color: 'text-emerald-500' },
+                      { label: 'Exploit Ready', value: intelStatus?.activePoCs || '842', sub: 'Active PoCs', icon: Zap, color: 'text-amber-500' },
                     ].map((stat, i) => (
                       <div key={i} className="bg-zinc-900/20 border border-zinc-900 p-6 rounded-2xl hover:bg-zinc-900/40 transition-all group relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-30 transition-opacity">
@@ -403,8 +505,13 @@ export default function App() {
                   <div className="flex items-center justify-between border-b border-zinc-900 pb-6">
                     <h2 className="text-3xl font-black text-zinc-100 uppercase tracking-tighter italic">Target Recon</h2>
                     <div className="flex space-x-3">
+                      <button 
+                        onClick={() => setShowRawIntel(!showRawIntel)}
+                        className={`px-4 py-2 border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showRawIntel ? 'bg-red-600 border-red-600 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'}`}
+                      >
+                        {showRawIntel ? 'Hide Raw' : 'Show Raw'}
+                      </button>
                       <button className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">Import Scope</button>
-                      <button className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-500 transition-all shadow-lg">New Target</button>
                     </div>
                   </div>
 
@@ -415,43 +522,161 @@ export default function App() {
                           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={20} />
                           <input 
                             type="text" 
+                            value={reconInput}
+                            onChange={(e) => setReconInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleScan(reconInput)}
                             placeholder="Target Domain, IP, or CIDR..." 
                             className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-16 pr-6 text-xs focus:outline-none focus:border-red-600 transition-all font-bold"
                           />
+                          <button 
+                            onClick={() => handleScan(reconInput)}
+                            disabled={isScanning}
+                            className="absolute right-3 top-2 bottom-2 px-4 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase disabled:opacity-50"
+                          >
+                            {isScanning ? <Loader2 className="animate-spin" size={14} /> : 'Scan'}
+                          </button>
                         </div>
                         
                         <div className="space-y-4">
-                          <h4 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] mb-6">Active Target Matrix</h4>
-                          {[
-                            { name: 'internal-api.levelace.com', type: 'API', vulns: 3, risk: 'Critical', status: 'Scanning' },
-                            { name: '192.168.10.42', type: 'Host', vulns: 1, risk: 'High', status: 'Idle' },
-                            { name: 'dev-portal.sentinel.io', type: 'Web', vulns: 5, risk: 'Critical', status: 'Enumerating' },
-                          ].map((target, i) => (
-                            <div key={i} className="flex items-center justify-between p-6 bg-zinc-900/30 border border-zinc-900 rounded-2xl hover:border-zinc-700 transition-all group">
-                              <div className="flex items-center space-x-6">
-                                <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover:border-red-500/50 transition-colors">
-                                  <Globe size={20} className="text-zinc-500 group-hover:text-red-500 transition-colors" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-black text-zinc-200 uppercase tracking-tight">{target.name}</p>
-                                  <div className="flex items-center space-x-3 mt-1">
-                                    <span className="text-[9px] text-zinc-600 font-bold uppercase">{target.type}</span>
-                                    <span className="text-[9px] text-zinc-600 font-bold">•</span>
-                                    <span className="text-[9px] text-red-500 font-bold uppercase">{target.risk}</span>
+                          <div className="flex items-center justify-between mb-6">
+                            <h4 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">
+                              {scanResults ? `Scan Results: ${scanResults.target}` : 'Active Target Matrix'}
+                            </h4>
+                            {scanResults && (
+                              <button 
+                                onClick={handleAnalyze}
+                                className="text-[9px] font-bold text-red-500 uppercase border border-red-500/30 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+                              >
+                                Run Analysis
+                              </button>
+                            )}
+                          </div>
+                          
+                          {isScanning && (
+                            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                              <Loader2 className="animate-spin text-red-600" size={32} />
+                              <p className="text-[10px] font-bold text-zinc-600 uppercase animate-pulse">Probing Network & Headers...</p>
+                            </div>
+                          )}
+
+                          {!isScanning && (scanResults ? (
+                            showRawIntel ? (
+                              <div className="p-6 bg-black border border-zinc-800 rounded-2xl font-mono text-[10px] text-emerald-500 overflow-x-auto whitespace-pre">
+                                {JSON.stringify(scanResults, null, 2)}
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 gap-4">
+                                {scanResults.findings.map((target: any, i: number) => (
+                                  <div key={i} className="flex items-center justify-between p-6 bg-zinc-900/30 border border-zinc-900 rounded-2xl hover:border-zinc-700 transition-all group">
+                                    <div className="flex items-center space-x-6">
+                                      <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover:border-red-500/50 transition-colors">
+                                        <Globe size={20} className="text-zinc-500 group-hover:text-red-500 transition-colors" />
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-black text-zinc-200 uppercase tracking-tight">{target.value || target.name}</p>
+                                        <div className="flex items-center space-x-3 mt-1">
+                                          <span className="text-[9px] text-zinc-600 font-bold uppercase">{target.type}</span>
+                                          <span className="text-[9px] text-zinc-600 font-bold">•</span>
+                                          <span className={`text-[9px] font-bold uppercase ${target.risk === 'Critical' || target.risk === 'High' ? 'text-red-500' : target.risk === 'Secure' ? 'text-emerald-500' : 'text-amber-500'}`}>{target.risk}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-xs font-black text-zinc-100">VERIFIED</p>
+                                      <p className="text-[9px] text-zinc-600 font-bold uppercase mt-1">LIVE DATA</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          ) : (
+                            <div className="grid grid-cols-1 gap-4 opacity-30 grayscale">
+                              {[
+                                { type: 'API', value: 'internal-api.example.com', risk: 'Critical', status: 'Scanning' },
+                                { type: 'Host', value: '192.168.10.42', risk: 'High', status: 'Idle' },
+                              ].map((target: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between p-6 bg-zinc-900/30 border border-zinc-900 rounded-2xl">
+                                  <div className="flex items-center space-x-6">
+                                    <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800">
+                                      <Globe size={20} className="text-zinc-500" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-black text-zinc-200 uppercase tracking-tight">{target.value}</p>
+                                      <div className="flex items-center space-x-3 mt-1">
+                                        <span className="text-[9px] text-zinc-600 font-bold uppercase">{target.type}</span>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
+                              ))}
+                            </div>
+                          )
+                        )}
+                        </div>
+                      </div>
+
+                    <div className="space-y-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Recent CVE Intelligence</h3>
+                        <div className="space-y-4">
+                          {[
+                            { id: 'CVE-2024-21626', title: 'runc Container Breakout', severity: 'Critical', date: '2024-01-31' },
+                            { id: 'CVE-2024-23897', title: 'Jenkins Arbitrary File Read', severity: 'High', date: '2024-01-24' },
+                            { id: 'CVE-2023-46604', title: 'Apache ActiveMQ RCE', severity: 'Critical', date: '2023-10-27' },
+                          ].map((cve, i) => (
+                            <div key={i} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-red-500/50 transition-all cursor-pointer group">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-black text-red-500 uppercase">{cve.id}</span>
+                                <span className="text-[8px] font-bold text-zinc-600 uppercase">{cve.date}</span>
                               </div>
-                              <div className="text-right">
-                                <p className="text-xs font-black text-zinc-100">{target.vulns} VULNS</p>
-                                <p className="text-[9px] text-zinc-600 font-bold uppercase mt-1">{target.status}</p>
+                              <p className="text-xs font-bold text-zinc-200 group-hover:text-white transition-colors">{cve.title}</p>
+                              <div className="mt-2">
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${cve.severity === 'Critical' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                  {cve.severity}
+                                </span>
                               </div>
                             </div>
                           ))}
+                          <button className="w-full py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all text-zinc-400">
+                            Load More Intelligence
+                          </button>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Intelligence Analysis</h3>
+                        <div className="space-y-4">
+                          {!analysisResults ? (
+                            <div className="p-6 border border-dashed border-zinc-800 rounded-2xl text-center">
+                              <p className="text-[10px] text-zinc-600 font-bold uppercase">No analysis data. Run a scan and click 'Run Analysis'.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl">
+                                <p className="text-[9px] text-red-500 font-black uppercase mb-1">Recommendation</p>
+                                <p className="text-xs font-bold text-zinc-200">{analysisResults.recommendation}</p>
+                              </div>
+                              <div className="space-y-3">
+                                {analysisResults.strategies.map((strat: any, i: number) => (
+                                  <div key={i} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl space-y-2">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[10px] font-black text-zinc-100 uppercase">{strat.name}</span>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${strat.impact === 'Critical' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                        {strat.impact}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-[8px] font-bold text-zinc-600 uppercase">
+                                      <span>Vector: {strat.vector}</span>
+                                      <span>Complexity: {strat.complexity}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
                         <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Recon Modules</h3>
                         <div className="grid grid-cols-1 gap-3">
@@ -471,8 +696,9 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                </motion.div>
-              )}
+                </div>
+              </motion.div>
+            )}
 
               {activeTab === 'impact' && (
                 <motion.div
@@ -520,6 +746,30 @@ export default function App() {
                     </div>
 
                     <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                      <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-8">Active Impact Data</h3>
+                      {exploitImpact?.status === 'SUCCESS' ? (
+                        <div className="space-y-6">
+                          <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl">
+                            <p className="text-[9px] text-emerald-500 font-black uppercase mb-1">Access Level</p>
+                            <p className="text-lg font-black text-zinc-100">{exploitImpact.access}</p>
+                          </div>
+                          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                            <p className="text-[9px] text-zinc-500 font-black uppercase mb-1">Data Exfiltrated</p>
+                            <p className="text-xs font-bold text-zinc-300">{exploitImpact.dataExfiltrated}</p>
+                          </div>
+                          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                            <p className="text-[9px] text-zinc-500 font-black uppercase mb-1">Session ID</p>
+                            <p className="text-xs font-mono text-red-500">{exploitImpact.sessionID}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-12 border border-dashed border-zinc-800 rounded-2xl text-center">
+                          <p className="text-[10px] text-zinc-600 font-bold uppercase italic">No active impact data. Execute a successful exploit in the PoC Forge.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
                       <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-8">Impact Metrics</h3>
                       <div className="space-y-8">
                         {[
@@ -560,7 +810,13 @@ export default function App() {
                     <h2 className="text-3xl font-black text-zinc-100 uppercase tracking-tighter italic">PoC Forge</h2>
                     <div className="flex space-x-3">
                       <button className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">Templates</button>
-                      <button className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-500 transition-all shadow-lg">Forge PoC</button>
+                      <button 
+                        onClick={handleExecuteExploit}
+                        disabled={isExecuting || !forgeTarget || !forgePayload}
+                        className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-500 transition-all shadow-lg disabled:opacity-50"
+                      >
+                        {isExecuting ? 'Executing...' : 'Execute Exploit'}
+                      </button>
                     </div>
                   </div>
 
@@ -568,27 +824,38 @@ export default function App() {
                     <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8 space-y-8">
                       <div className="space-y-4">
                         <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Exploit Type</label>
-                        <select className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold uppercase">
-                          <option>Remote Code Execution (RCE)</option>
-                          <option>SQL Injection (Blind/Time-based)</option>
-                          <option>Auth Bypass (JWT/OAuth)</option>
-                          <option>Local Privilege Escalation</option>
-                          <option>Server-Side Request Forgery</option>
+                        <select 
+                          value={forgeType}
+                          onChange={(e) => setForgeType(e.target.value)}
+                          className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold uppercase"
+                        >
+                          <option value="RCE">Remote Code Execution (RCE)</option>
+                          <option value="SQLi">SQL Injection (Blind/Time-based)</option>
+                          <option value="Auth">Auth Bypass (JWT/OAuth)</option>
+                          <option value="LPE">Local Privilege Escalation</option>
+                          <option value="SSRF">Server-Side Request Forgery</option>
                         </select>
                       </div>
 
                       <div className="space-y-4">
                         <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Target Parameters</label>
-                        <div className="grid grid-cols-2 gap-4">
-                          <input type="text" placeholder="Target URL" className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold" />
-                          <input type="text" placeholder="Payload Marker" className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold" />
+                        <div className="grid grid-cols-1 gap-4">
+                          <input 
+                            type="text" 
+                            value={forgeTarget}
+                            onChange={(e) => setForgeTarget(e.target.value)}
+                            placeholder="Target URL / IP" 
+                            className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold" 
+                          />
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Custom Logic</label>
+                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Custom Payload</label>
                         <textarea 
                           rows={8}
+                          value={forgePayload}
+                          onChange={(e) => setForgePayload(e.target.value)}
                           placeholder="Define custom exploit logic or constraints..."
                           className="w-full bg-black border border-zinc-800 rounded-2xl p-6 text-xs text-emerald-500 focus:outline-none focus:border-red-600 transition-all font-mono leading-relaxed"
                         />
