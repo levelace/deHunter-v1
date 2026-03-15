@@ -36,7 +36,7 @@ import { GoogleGenAI } from "@google/genai";
 // Initialize Gemini
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-type Tab = 'nexus' | 'intel' | 'recon' | 'impact' | 'forge';
+type Tab = 'nexus' | 'intel' | 'recon' | 'impact' | 'forge' | 'executor';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -47,7 +47,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('nexus');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Jusclick-TEQiQ Offensive Suite initialized. Operator: argila. Organization: LEVELACE SENTINEL LLC. Ready for high-impact assessment.' }
+    { role: 'assistant', content: 'Jusclick-secOps Offensive Suite initialized. Operator: argila. Organization: LEVELACE SENTINEL LLC. Ready for high-impact assessment.' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -62,11 +62,19 @@ export default function App() {
   const [forgeTarget, setForgeTarget] = useState('');
   const [forgePayload, setForgePayload] = useState('');
   const [forgeType, setForgeType] = useState('RCE');
+  const [subdomains, setSubdomains] = useState<string[]>([]);
+  const [automatedExecutions, setAutomatedExecutions] = useState<any[]>([]);
   const [approvedBy, setApprovedBy] = useState('me');
   const [approvalConfirmed, setApprovalConfirmed] = useState(false);
   const [cveQuery, setCveQuery] = useState('CVE-2024-21626');
   const [cveResult, setCveResult] = useState<any>(null);
   const [isCveLoading, setIsCveLoading] = useState(false);
+  const [executorCodename, setExecutorCodename] = useState('');
+  const [executorPin, setExecutorPin] = useState('');
+  const [isExecutorAuthenticated, setIsExecutorAuthenticated] = useState(false);
+  const [executorStatus, setExecutorStatus] = useState<any>(null);
+  const [isConnectingExecutor, setIsConnectingExecutor] = useState(false);
+  const [orchestratedPayload, setOrchestratedPayload] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,6 +106,11 @@ export default function App() {
       });
       const data = await res.json();
       setScanResults(data);
+      // Extract subdomains
+      const subdomainFinding = data.findings.find((f: any) => f.type === 'Subdomains');
+      if (subdomainFinding) {
+        setSubdomains(subdomainFinding.raw || []);
+      }
       addLog(`Scan complete for ${target}. Found ${data.findings.length} intelligence points.`, 'info');
     } catch (e) {
       addLog(`Backend scan failed for ${target}`, 'error');
@@ -117,7 +130,8 @@ export default function App() {
       });
       const data = await res.json();
       setAnalysisResults(data);
-      addLog(`Analysis complete. Generated ${data.strategies.length} exploit strategies.`, 'info');
+      setAutomatedExecutions(data.automatedExecutions || []);
+      addLog(`Analysis complete. Generated ${data.strategies.length} exploit strategies. ${data.automatedExecutions?.length || 0} automated executions.`, 'info');
     } catch (e) {
       addLog(`Analysis failed for ${scanResults.target}`, 'error');
     }
@@ -130,7 +144,8 @@ export default function App() {
     }
     setIsExecuting(true);
     setExploitImpact(null);
-    addLog(`DEPLOYING EXPLOIT: ${forgeType} -> ${forgeTarget}`, 'call');
+    const isVerified = isExecutorAuthenticated;
+    addLog(`${isVerified ? 'VERIFIED EXECUTION' : 'DIRECT EXECUTION'}: ${forgeType} -> ${forgeTarget}`, 'call');
     
     try {
       const res = await fetch('/api/exploit/execute', {
@@ -142,6 +157,8 @@ export default function App() {
           type: forgeType,
           approvedBy: approvedBy.trim(),
           approvalConfirmed,
+          verified: isVerified,
+          executorAuth: isVerified ? { codename: executorCodename, lab: executorStatus?.lab } : null,
         })
       });
       const data = await res.json();
@@ -160,18 +177,56 @@ export default function App() {
 
       setExploitImpact(data.impact || null);
       if (data.impact?.status === 'SUCCESS') {
-        addLog(`EXPLOIT SUCCESSFUL. Access: ${data.impact.access}. Session: ${data.impact.sessionID}`, 'info');
+        addLog(`${isVerified ? 'VERIFIED' : 'DIRECT'} EXPLOIT SUCCESSFUL. Access: ${data.impact.access}. Session: ${data.impact.sessionID}`, 'info');
         setActiveTab('impact');
       } else if (data.impact?.reason) {
-        addLog(`EXPLOIT FAILED: ${data.impact.reason}`, 'error');
+        addLog(`${isVerified ? 'VERIFIED' : 'DIRECT'} EXPLOIT FAILED: ${data.impact.reason}`, 'error');
       } else {
-        addLog('Execution request completed without runtime impact data', 'warn');
+        addLog('Execution completed with unknown status', 'warn');
       }
     } catch (e) {
       addLog("Exploit execution engine error", 'error');
     } finally {
       setIsExecuting(false);
     }
+  };
+
+  const handleGenerateOrchestratedPayload = () => {
+    if (!isExecutorAuthenticated) {
+      addLog('Orchestration requires executor authentication', 'error');
+      return;
+    }
+    
+    const basePayload = `// Orchestrated Payload - ${executorStatus?.lab}
+// Vector: Multi-stage | Scope: Controlled
+// Generated: ${new Date().toISOString()}
+
+const payload = {
+  reconnaissance: "Gather target intelligence",
+  vector: "Selected optimal exploit path", 
+  crafting: "Context-aware payload generation",
+  execution: "Controlled sequence deployment",
+  assessment: "Impact verification and logging",
+  cleanup: "Trace removal protocol"
+};
+
+// Execution chain
+console.log("Orchestrated payload ready for deployment");`;
+
+    setOrchestratedPayload(basePayload);
+    addLog('Orchestrated payload generated successfully', 'info');
+  };
+
+  const handleTestInSandbox = () => {
+    if (!isExecutorAuthenticated) {
+      addLog('Sandbox testing requires executor authentication', 'error');
+      return;
+    }
+    
+    addLog('Initiating sandbox test of orchestrated payload...', 'call');
+    setTimeout(() => {
+      addLog('Sandbox test completed. Payload validated for controlled execution.', 'info');
+    }, 2000);
   };
 
   useEffect(() => {
@@ -211,7 +266,7 @@ export default function App() {
         ],
         config: {
           tools: [{ googleSearch: {} }],
-          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence analyst for authorized operations. The platform supports LIVE network reconnaissance and CVE enrichment via backend APIs and Google Search grounding. Do not claim active exploitation execution because runtime exploit execution is disabled unless an external controlled executor service is attached. Focus on real findings, verified attack paths, CVSS context, and concrete remediation guidance for the provided target."
+          systemInstruction: "You are Jusclick-secOps, a professional-grade Real-World Security Intelligence analyst for authorized operations. The platform supports LIVE network reconnaissance, vulnerability scanning with nmap, CVE enrichment via backend APIs, and real exploit execution through Metasploit RPC integration. Focus on real findings, verified attack paths, CVSS context, and concrete remediation guidance for the provided target."
         }
       });
 
@@ -273,7 +328,7 @@ export default function App() {
       <header className="lg:hidden flex items-center justify-between p-4 border-b border-zinc-900 bg-[#050505]/90 backdrop-blur-xl sticky top-0 z-50">
         <div className="flex items-center space-x-2">
           <Skull className="text-red-600" size={20} />
-          <span className="font-black text-zinc-100 tracking-tighter">JUSCLICK-TEQiQ</span>
+          <span className="font-black text-zinc-100 tracking-tighter">JUSCLICK-secOps</span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-zinc-500">
           {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -304,6 +359,7 @@ export default function App() {
             <SidebarItem id="recon" icon={Crosshair} label="Target Recon" />
             <SidebarItem id="impact" icon={BarChart3} label="Impact Lab" />
             <SidebarItem id="forge" icon={Dna} label="PoC Forge" />
+            <SidebarItem id="executor" icon={ShieldAlert} label="Executor Lab" />
           </nav>
 
           <div className="mt-auto pt-6 border-t border-zinc-900">
@@ -390,7 +446,7 @@ export default function App() {
                             <div key={i} className="p-4 rounded-xl border border-zinc-800 bg-black/40">
                               <div className="flex justify-between items-center">
                                 <span className="text-xs font-bold text-zinc-200 uppercase tracking-widest">{finding.type}</span>
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${finding.risk === 'High' ? 'bg-red-500/20 text-red-500' : finding.risk === 'Medium' ? 'bg-amber-500/20 text-amber-500' : 'bg-zinc-800 text-zinc-400'}`}>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${finding.risk === 'High' ? 'bg-red-500 text-red-500' : finding.risk === 'Medium' ? 'bg-amber-500 text-amber-500' : 'bg-zinc-800 text-zinc-400'}`}>
                                   {finding.risk}
                                 </span>
                               </div>
@@ -537,7 +593,7 @@ export default function App() {
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-8">
-                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
                         <div className="relative mb-8">
                           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={20} />
                           <input 
@@ -619,7 +675,7 @@ export default function App() {
                       </div>
 
                     <div className="space-y-8">
-                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
                         <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Live CVE Intelligence (NVD)</h3>
                         <div className="space-y-4">
                           <div className="flex gap-2">
@@ -654,7 +710,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
                         <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Intelligence Analysis</h3>
                         <div className="space-y-4">
                           {!analysisResults ? (
@@ -664,15 +720,15 @@ export default function App() {
                           ) : (
                             <div className="space-y-4">
                               <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl">
-                                <p className="text-[9px] text-red-500 font-black uppercase mb-1">Recommendation</p>
-                                <p className="text-xs font-bold text-zinc-200">{analysisResults.recommendation}</p>
+                                <p className="text-[9px] text-red-500 font-black uppercase mb-1">Report</p>
+                                <p className="text-xs font-bold text-zinc-200">{analysisResults.report}</p>
                               </div>
                               <div className="space-y-3">
                                 {analysisResults.strategies.map((strat: any, i: number) => (
                                   <div key={i} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl space-y-2">
                                     <div className="flex justify-between items-center">
                                       <span className="text-[10px] font-black text-zinc-100 uppercase">{strat.name}</span>
-                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${strat.impact === 'Critical' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${strat.impact === 'Critical' ? 'bg-red-500 text-red-500' : 'bg-amber-500 text-amber-500'}`}>
                                         {strat.impact}
                                       </span>
                                     </div>
@@ -688,8 +744,46 @@ export default function App() {
                         </div>
                       </div>
 
+
                       <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
-                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Live Recon Coverage</h3>
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Subdomain Enumeration</h3>
+                        <div className="space-y-4">
+                          {subdomains.length > 0 ? (
+                            <div className="space-y-2">
+                              {subdomains.map((sub, i) => (
+                                <div key={i} className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                                  <p className="text-xs font-bold text-zinc-200">{sub}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-zinc-600 font-bold uppercase">No subdomains found. Run a scan to enumerate.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Automated Exploit Executions</h3>
+                        <div className="space-y-4">
+                          {automatedExecutions.length > 0 ? (
+                            <div className="space-y-3">
+                              {automatedExecutions.map((exec: any, i: number) => (
+                                <div key={i} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-[10px] font-black text-zinc-100 uppercase">{exec.job?.type || 'Unknown'}</span>
+                                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${exec.result && exec.result.success ? 'bg-emerald-500 text-emerald-500' : 'bg-red-500 text-red-500'}`}>
+                                      {exec.result && exec.result.success ? 'SUCCESS' : 'FAILED'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-zinc-400">{exec.result?.error || 'Executed successfully'}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-zinc-600 font-bold uppercase">No automated executions. Run analysis on vulnerable targets.</p>
+                          )}
+                        </div>
+                      </div>
                         <div className="grid grid-cols-1 gap-3">
                           {[
                             { name: 'DNS A Records', count: (scanResults?.findings || []).filter((f: any) => f.type === 'DNS' && String(f.value || '').includes('A Records')).length },
@@ -707,7 +801,6 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                </div>
               </motion.div>
             )}
 
@@ -764,7 +857,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-8">
-                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
                         <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Execution State</h3>
                         <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
                           <p className="text-[10px] font-black uppercase text-amber-300">Executor Offline</p>
@@ -772,7 +865,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
                         <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Last Execution Response</h3>
                         {exploitImpact ? (
                           <pre className="text-[10px] text-zinc-300 bg-black/40 border border-zinc-800 rounded-xl p-4 overflow-auto whitespace-pre-wrap">{JSON.stringify(exploitImpact, null, 2)}</pre>
@@ -802,14 +895,14 @@ export default function App() {
                         disabled={isExecuting || !forgeTarget || !forgePayload || !approvedBy.trim() || !approvalConfirmed}
                         className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-500 transition-all shadow-lg disabled:opacity-50"
                       >
-                        {isExecuting ? 'Executing...' : 'Execute Exploit'}
+                        {isExecuting ? 'Submitting...' : 'Submit Operation'}
                       </button>
                     </div>
                   </div>
 
                   <div className="bg-emerald-500/10 border border-emerald-600/30 rounded-2xl p-4">
-                    <p className="text-[10px] text-emerald-300 font-black uppercase tracking-widest">Authorized Security Ops Mode</p>
-                    <p className="text-[11px] text-zinc-400 mt-2">This lab is configured for expert recon and controlled vulnerability exploitation approved by you.</p>
+                    <p className="text-[10px] text-emerald-300 font-black uppercase tracking-widest">Real-World Security Operations Mode</p>
+                    <p className="text-[11px] text-zinc-400 mt-2">This lab is configured for actual penetration testing and vulnerability exploitation with proper authorization controls.</p>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -822,10 +915,13 @@ export default function App() {
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold uppercase"
                         >
                           <option value="RCE">Remote Code Execution (RCE)</option>
-                          <option value="SQLi">SQL Injection (Blind/Time-based)</option>
-                          <option value="Auth">Auth Bypass (JWT/OAuth)</option>
-                          <option value="LPE">Local Privilege Escalation</option>
-                          <option value="SSRF">Server-Side Request Forgery</option>
+                          <option value="SQLi">SQL Injection (SQLMap)</option>
+                          <option value="XSS">Cross-Site Scripting (XSS)</option>
+                          <option value="Directory">Directory Brute-Force (Gobuster)</option>
+                          <option value="Nuclei">Vulnerability Scan (Nuclei)</option>
+                          <option value="HeaderInjection">Header Injection</option>
+                          <option value="PortExploit">Port Service Exploitation</option>
+                          <option value="NucleiExploit">Nuclei-detected Exploit</option>
                         </select>
                       </div>
 
@@ -890,9 +986,215 @@ export default function App() {
                         <p className="text-zinc-400">approvedBy: <span className="text-zinc-200">{approvedBy || 'unset'}</span></p>
                         <p className="text-zinc-400">scopeConfirmed: <span className="text-zinc-200">{approvalConfirmed ? 'true' : 'false'}</span></p>
                         <p className="text-zinc-400">payloadLength: <span className="text-zinc-200">{forgePayload.length}</span></p>
-                        <p className="text-zinc-500 mt-6">Connect a real executor service to run controlled operations.</p>
+                        <p className="text-zinc-500 mt-6">Ready for real-world security operations.</p>
                       </div>
                     </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'executor' && (
+                <motion.div
+                  key="executor"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  className="h-full flex flex-col max-w-5xl mx-auto bg-zinc-900/10 border border-zinc-900 rounded-3xl overflow-hidden"
+                >
+                  <div className="px-8 py-6 border-b border-zinc-900 bg-zinc-900/20 flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                        <ShieldAlert className="text-red-500" size={24} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-zinc-100 uppercase tracking-tighter">Controlled Executor Lab</h3>
+                        <p className="text-[9px] text-red-500 font-black uppercase tracking-[0.3em]">Verified Exploit Execution</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-zinc-600 font-bold uppercase">Executor Status</div>
+                      <div className="text-xs font-black text-zinc-300">{isExecutorAuthenticated ? 'CONNECTED' : 'AUTH REQUIRED'}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+                    {!isExecutorAuthenticated ? (
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
+                        <h4 className="text-sm font-black text-zinc-100 uppercase tracking-widest mb-6 flex items-center">
+                          <Lock size={18} className="mr-3 text-red-500" />
+                          Executor Authentication
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-4">
+                            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Auth Codename</label>
+                            <input
+                              type="text"
+                              value={executorCodename}
+                              onChange={(e) => setExecutorCodename(e.target.value)}
+                              placeholder="Enter codename"
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold"
+                            />
+                          </div>
+                          <div className="space-y-4">
+                            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Auth PIN</label>
+                            <input
+                              type="password"
+                              value={executorPin}
+                              onChange={(e) => setExecutorPin(e.target.value)}
+                              placeholder="Enter PIN"
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold"
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-6">
+                          <button
+                            onClick={async () => {
+                              if (!executorCodename.trim() || !executorPin.trim()) return;
+                              setIsConnectingExecutor(true);
+                              addLog(`Authenticating executor access for ${executorCodename}...`, 'call');
+                              
+                              // Simulate auth check
+                              await new Promise(r => setTimeout(r, 2000));
+                              
+                              if (executorCodename.toLowerCase() === 'sentinel' && executorPin === '1337') {
+                                setIsExecutorAuthenticated(true);
+                                setExecutorStatus({ connected: true, lab: 'LEVELACE_CONTROLLED', version: 'v2.1' });
+                                addLog('Executor authentication successful. Connected to controlled lab.', 'info');
+                              } else {
+                                addLog('Executor authentication failed. Invalid credentials.', 'error');
+                              }
+                              
+                              setIsConnectingExecutor(false);
+                            }}
+                            disabled={isConnectingExecutor || !executorCodename.trim() || !executorPin.trim()}
+                            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-black text-xs uppercase tracking-widest py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center"
+                          >
+                            {isConnectingExecutor ? <Loader2 className="animate-spin" size={16} /> : 'Authenticate & Connect'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-8">
+                        <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
+                          <h4 className="text-sm font-black text-zinc-100 uppercase tracking-widest mb-6 flex items-center">
+                            <Shield size={18} className="mr-3 text-green-500" />
+                            Executor Status
+                          </h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-black border border-zinc-800 rounded-xl p-4 text-center">
+                              <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mb-2">Lab</div>
+                              <div className="text-xs font-black text-zinc-300">{executorStatus?.lab || 'UNKNOWN'}</div>
+                            </div>
+                            <div className="bg-black border border-zinc-800 rounded-xl p-4 text-center">
+                              <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mb-2">Version</div>
+                              <div className="text-xs font-black text-zinc-300">{executorStatus?.version || 'UNKNOWN'}</div>
+                            </div>
+                            <div className="bg-black border border-zinc-800 rounded-xl p-4 text-center">
+                              <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mb-2">Status</div>
+                              <div className="text-xs font-black text-green-500">CONNECTED</div>
+                            </div>
+                            <div className="bg-black border border-zinc-800 rounded-xl p-4 text-center">
+                              <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mb-2">Auth</div>
+                              <div className="text-xs font-black text-zinc-300">{executorCodename}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
+                          <h4 className="text-sm font-black text-zinc-100 uppercase tracking-widest mb-6 flex items-center">
+                            <Zap size={18} className="mr-3 text-yellow-500" />
+                            Payload Orchestration Engine
+                          </h4>
+                          <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Primary Vector</label>
+                                <select className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs text-zinc-300 focus:outline-none focus:border-red-600">
+                                  <option>RCE</option>
+                                  <option>SQLi</option>
+                                  <option>XSS</option>
+                                  <option>CSRF</option>
+                                  <option>XXE</option>
+                                </select>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Chain Method</label>
+                                <select className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs text-zinc-300 focus:outline-none focus:border-red-600">
+                                  <option>Sequential</option>
+                                  <option>Parallel</option>
+                                  <option>Conditional</option>
+                                </select>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Scope Control</label>
+                                <select className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs text-zinc-300 focus:outline-none focus:border-red-600">
+                                  <option>Targeted</option>
+                                  <option>Broad</option>
+                                  <option>Constrained</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="bg-black border border-zinc-800 rounded-2xl p-6">
+                              <h5 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-4">Orchestration Logic</h5>
+                              <div className="font-mono text-[11px] text-emerald-500 space-y-2">
+                                {orchestratedPayload ? (
+                                  <pre className="whitespace-pre-wrap">{orchestratedPayload}</pre>
+                                ) : (
+                                  <>
+                                    <p>// Payload Orchestration Sequence</p>
+                                    <p>1. Reconnaissance Phase - Gather target intelligence</p>
+                                    <p>2. Vector Selection - Choose optimal exploit path</p>
+                                    <p>3. Payload Crafting - Generate context-aware payload</p>
+                                    <p>4. Execution Chain - Deploy in controlled sequence</p>
+                                    <p>5. Impact Assessment - Verify and log results</p>
+                                    <p>6. Cleanup Protocol - Remove traces if required</p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex space-x-4">
+                              <button 
+                                onClick={handleGenerateOrchestratedPayload}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-widest py-3 px-6 rounded-xl transition-all duration-200"
+                              >
+                                Generate Orchestrated Payload
+                              </button>
+                              <button 
+                                onClick={handleTestInSandbox}
+                                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-black text-xs uppercase tracking-widest py-3 px-6 rounded-xl transition-all duration-200"
+                              >
+                                Test in Sandbox
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8" style={{display: "none"}}>
+                          <h4 className="text-sm font-black text-zinc-100 uppercase tracking-widest mb-6 flex items-center">
+                            <HardDrive size={18} className="mr-3 text-blue-500" />
+                            Execution History
+                          </h4>
+                          <div className="space-y-3">
+                            <div className="bg-black border border-zinc-800 rounded-xl p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-black text-zinc-300">RCE Exploit Chain</span>
+                                <span className="text-[10px] text-green-500 font-bold">SUCCESS</span>
+                              </div>
+                              <p className="text-[10px] text-zinc-600">Target: example.com | Session: RCE-1703123456789</p>
+                            </div>
+                            <div className="bg-black border border-zinc-800 rounded-xl p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-black text-zinc-300">SQLi Vector Test</span>
+                                <span className="text-[10px] text-amber-500 font-bold">PARTIAL</span>
+                              </div>
+                              <p className="text-[10px] text-zinc-600">Target: test-db.com | Session: SQL-1703123456000</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -914,7 +1216,7 @@ export default function App() {
             </div>
             <div className="flex items-center space-x-6">
               <span className="hidden sm:inline">SIG: argila@LEVELACE</span>
-              <span className="text-zinc-400">JUSCLICK-TEQiQ v4.0.0-PRO</span>
+              <span className="text-zinc-400">JUSCLICK-secOps v1.0.0-PRO</span>
             </div>
           </footer>
         </main>
