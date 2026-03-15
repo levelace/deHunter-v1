@@ -9,7 +9,6 @@ import {
   Globe, 
   Zap, 
   MessageSquare, 
-  ChevronRight,
   AlertTriangle,
   Code,
   FileText,
@@ -63,6 +62,11 @@ export default function App() {
   const [forgeTarget, setForgeTarget] = useState('');
   const [forgePayload, setForgePayload] = useState('');
   const [forgeType, setForgeType] = useState('RCE');
+  const [approvedBy, setApprovedBy] = useState('me');
+  const [approvalConfirmed, setApprovalConfirmed] = useState(false);
+  const [cveQuery, setCveQuery] = useState('CVE-2024-21626');
+  const [cveResult, setCveResult] = useState<any>(null);
+  const [isCveLoading, setIsCveLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,8 +124,8 @@ export default function App() {
   };
 
   const handleExecuteExploit = async () => {
-    if (!forgeTarget || !forgePayload) {
-      addLog("Execution blocked: Target and Payload required", 'warn');
+    if (!forgeTarget || !forgePayload || !approvalConfirmed || !approvedBy.trim()) {
+      addLog('Execution blocked: scope, payload, and authorization confirmation are required', 'warn');
       return;
     }
     setIsExecuting(true);
@@ -132,22 +136,36 @@ export default function App() {
       const res = await fetch('/api/exploit/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: forgeTarget, payload: forgePayload, type: forgeType })
+        body: JSON.stringify({
+          target: forgeTarget,
+          payload: forgePayload,
+          type: forgeType,
+          approvedBy: approvedBy.trim(),
+          approvalConfirmed,
+        })
       });
       const data = await res.json();
-      
-      // Simulate live terminal feedback
-      for (const step of data.steps) {
-        await new Promise(r => setTimeout(r, step.delay));
-        addLog(step.msg, 'info');
+
+      if (!res.ok) {
+        addLog(data.error || 'Execution request failed', 'error');
+        return;
       }
 
-      setExploitImpact(data.impact);
-      if (data.impact.status === 'SUCCESS') {
+      if (Array.isArray(data.steps)) {
+        for (const step of data.steps) {
+          await new Promise(r => setTimeout(r, step.delay));
+          addLog(step.msg, 'info');
+        }
+      }
+
+      setExploitImpact(data.impact || null);
+      if (data.impact?.status === 'SUCCESS') {
         addLog(`EXPLOIT SUCCESSFUL. Access: ${data.impact.access}. Session: ${data.impact.sessionID}`, 'info');
-        setActiveTab('impact'); // Switch to impact lab to see results
-      } else {
+        setActiveTab('impact');
+      } else if (data.impact?.reason) {
         addLog(`EXPLOIT FAILED: ${data.impact.reason}`, 'error');
+      } else {
+        addLog('Execution request completed without runtime impact data', 'warn');
       }
     } catch (e) {
       addLog("Exploit execution engine error", 'error');
@@ -193,7 +211,7 @@ export default function App() {
         ],
         config: {
           tools: [{ googleSearch: {} }],
-          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence & WebApp Hacker. Your platform is a FULL-STACK system with a real Express backend capable of LIVE network probing and ACTIVE EXPLOIT EXECUTION. You have access to real-world intelligence via GOOGLE SEARCH and a custom BACKEND ENGINE. Your primary mission tonight is to FIND REAL BUGS. Use GOOGLE SEARCH to find the latest CVEs, zero-days, and misconfigurations for any target or technology the user provides. When a user provides a target, perform a LIVE scan using the 'Target Recon' module and then use your intelligence to cross-reference findings with real-world exploits. You provide technical attack chains, CVSS scores, and remediation strategies based on ACTUAL CURRENT DATA. You are precise, technical, and focused on real-world impact for LEVELACE SENTINEL LLC."
+          systemInstruction: "You are Jusclick-TEQiQ, a professional-grade Real-World Security Intelligence analyst for authorized operations. The platform supports LIVE network reconnaissance and CVE enrichment via backend APIs and Google Search grounding. Do not claim active exploitation execution because runtime exploit execution is disabled unless an external controlled executor service is attached. Focus on real findings, verified attack paths, CVSS context, and concrete remediation guidance for the provided target."
         }
       });
 
@@ -213,6 +231,22 @@ export default function App() {
       setMessages(prev => [...prev, { role: 'assistant', content: "Error: Intelligence core offline. Check API configuration." }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCveLookup = async () => {
+    if (!cveQuery.trim()) return;
+    setIsCveLoading(true);
+    setCveResult(null);
+
+    try {
+      const res = await fetch(`/api/intel/cve/${encodeURIComponent(cveQuery.trim())}`);
+      const data = await res.json();
+      setCveResult(data);
+    } catch (e) {
+      setCveResult({ error: 'Failed to fetch CVE data' });
+    } finally {
+      setIsCveLoading(false);
     }
   };
 
@@ -304,16 +338,16 @@ export default function App() {
                   <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-900 pb-8">
                     <div>
                       <h1 className="text-4xl font-black text-zinc-100 tracking-tighter uppercase italic">Intelligence Nexus</h1>
-                      <p className="text-zinc-600 mt-2 font-bold uppercase tracking-widest text-xs">Real-world security intelligence & webapp hacking telemetry.</p>
+                      <p className="text-zinc-600 mt-2 font-bold uppercase tracking-widest text-xs">Expert security recon and vulnerability exploitation lab telemetry.</p>
                     </div>
                       <div className="flex items-center space-x-6 text-[10px] font-bold uppercase tracking-widest">
                         <div className="flex flex-col items-end">
                           <span className="text-zinc-600">Threat Level</span>
-                          <span className="text-red-500">{intelStatus?.threatLevel || 'CRITICAL'}</span>
+                          <span className="text-red-500">{intelStatus?.threatLevel || 'UNKNOWN'}</span>
                         </div>
                         <div className="flex flex-col items-end">
                           <span className="text-zinc-600">Active Nodes</span>
-                          <span className="text-zinc-100">{intelStatus?.activeNodes?.toLocaleString() || '1,204'}</span>
+                          <span className="text-zinc-100">{intelStatus?.activeNodes?.toLocaleString() || '0'}</span>
                         </div>
                       </div>
                   </div>
@@ -321,10 +355,10 @@ export default function App() {
                   {/* High Impact Stats */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
-                      { label: 'Intelligence IQ', value: '98.4', sub: 'Neural Sync', icon: Brain, color: 'text-red-500' },
-                      { label: 'WebApp Vulnerabilities', value: intelStatus?.verifiedFlaws || '1,242', sub: 'Verified Flaws', icon: Globe, color: 'text-blue-500' },
-                      { label: 'Threat Actors', value: intelStatus?.trackedAPTs || '42', sub: 'Tracked APTs', icon: Shield, color: 'text-emerald-500' },
-                      { label: 'Exploit Ready', value: intelStatus?.activePoCs || '842', sub: 'Active PoCs', icon: Zap, color: 'text-amber-500' },
+                      { label: 'Findings in Last Scan', value: scanResults?.findings?.length ?? intelStatus?.activeNodes ?? 0, sub: 'Live Findings', icon: Brain, color: 'text-red-500' },
+                      { label: 'High-Risk Findings', value: intelStatus?.verifiedFlaws ?? 0, sub: 'High Risk', icon: Globe, color: 'text-blue-500' },
+                      { label: 'TXT Intel Records', value: intelStatus?.trackedAPTs ?? 0, sub: 'DNS TXT Count', icon: Shield, color: 'text-emerald-500' },
+                      { label: 'Actionable PoCs', value: intelStatus?.activePoCs ?? 0, sub: 'Derived from Scan', icon: Zap, color: 'text-amber-500' },
                     ].map((stat, i) => (
                       <div key={i} className="bg-zinc-900/20 border border-zinc-900 p-6 rounded-2xl hover:bg-zinc-900/40 transition-all group relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-30 transition-opacity">
@@ -350,38 +384,24 @@ export default function App() {
                         <span className="text-[10px] text-zinc-600 font-bold uppercase">Live Analysis</span>
                       </div>
                       
-                      <div className="space-y-6">
-                        {[
-                          { name: 'Target: ilevelace.com', steps: ['Subdomain Scan', 'API Discovery', 'WAF Bypass', 'SQLi Test'], progress: 85, risk: 'Critical' },
-                          { name: 'Threat Intel: APT-29', steps: ['TTP Mapping', 'C2 Identification', 'Payload Analysis'], progress: 60, risk: 'High' },
-                          { name: 'WebApp: Auth-Module-V2', steps: ['JWT Analysis', 'IDOR Discovery', 'Logic Flaw Test'], progress: 95, risk: 'Critical' },
-                        ].map((chain, i) => (
-                          <div key={i} className="space-y-3">
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs font-bold text-zinc-200 uppercase tracking-widest">{chain.name}</span>
-                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${chain.risk === 'Critical' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
-                                {chain.risk}
-                              </span>
+                      <div className="space-y-4">
+                        {scanResults?.findings?.length ? (
+                          scanResults.findings.slice(0, 8).map((finding: any, i: number) => (
+                            <div key={i} className="p-4 rounded-xl border border-zinc-800 bg-black/40">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-zinc-200 uppercase tracking-widest">{finding.type}</span>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${finding.risk === 'High' ? 'bg-red-500/20 text-red-500' : finding.risk === 'Medium' ? 'bg-amber-500/20 text-amber-500' : 'bg-zinc-800 text-zinc-400'}`}>
+                                  {finding.risk}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-400 mt-2 break-all">{finding.value}</p>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              {chain.steps.map((step, si) => (
-                                <React.Fragment key={si}>
-                                  <div className={`px-2 py-1 rounded text-[8px] font-bold uppercase border ${si < (chain.progress/25) ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-zinc-900 border-zinc-800 text-zinc-600'}`}>
-                                    {step}
-                                  </div>
-                                  {si < chain.steps.length - 1 && <ChevronRight size={10} className="text-zinc-800" />}
-                                </React.Fragment>
-                              ))}
-                            </div>
-                            <div className="h-1 w-full bg-zinc-900 rounded-full overflow-hidden">
-                              <motion.div 
-                                initial={{ width: 0 }}
-                                animate={{ width: `${chain.progress}%` }}
-                                className="h-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"
-                              />
-                            </div>
+                          ))
+                        ) : (
+                          <div className="p-6 rounded-xl border border-zinc-800 bg-black/40 text-xs text-zinc-500">
+                            No live scan findings yet. Run a target scan in the Target Recon tab to populate this panel.
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
 
@@ -590,25 +610,8 @@ export default function App() {
                               </div>
                             )
                           ) : (
-                            <div className="grid grid-cols-1 gap-4 opacity-30 grayscale">
-                              {[
-                                { type: 'API', value: 'internal-api.example.com', risk: 'Critical', status: 'Scanning' },
-                                { type: 'Host', value: '192.168.10.42', risk: 'High', status: 'Idle' },
-                              ].map((target: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between p-6 bg-zinc-900/30 border border-zinc-900 rounded-2xl">
-                                  <div className="flex items-center space-x-6">
-                                    <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800">
-                                      <Globe size={20} className="text-zinc-500" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm font-black text-zinc-200 uppercase tracking-tight">{target.value}</p>
-                                      <div className="flex items-center space-x-3 mt-1">
-                                        <span className="text-[9px] text-zinc-600 font-bold uppercase">{target.type}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
+                            <div className="p-6 bg-black/40 border border-zinc-800 rounded-2xl text-xs text-zinc-500">
+                              No scan data loaded. Enter a real target and run a scan to populate this panel.
                             </div>
                           )
                         )}
@@ -617,29 +620,37 @@ export default function App() {
 
                     <div className="space-y-8">
                       <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
-                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Recent CVE Intelligence</h3>
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Live CVE Intelligence (NVD)</h3>
                         <div className="space-y-4">
-                          {[
-                            { id: 'CVE-2024-21626', title: 'runc Container Breakout', severity: 'Critical', date: '2024-01-31' },
-                            { id: 'CVE-2024-23897', title: 'Jenkins Arbitrary File Read', severity: 'High', date: '2024-01-24' },
-                            { id: 'CVE-2023-46604', title: 'Apache ActiveMQ RCE', severity: 'Critical', date: '2023-10-27' },
-                          ].map((cve, i) => (
-                            <div key={i} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-red-500/50 transition-all cursor-pointer group">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] font-black text-red-500 uppercase">{cve.id}</span>
-                                <span className="text-[8px] font-bold text-zinc-600 uppercase">{cve.date}</span>
-                              </div>
-                              <p className="text-xs font-bold text-zinc-200 group-hover:text-white transition-colors">{cve.title}</p>
-                              <div className="mt-2">
-                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${cve.severity === 'Critical' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
-                                  {cve.severity}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                          <button className="w-full py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all text-zinc-400">
-                            Load More Intelligence
-                          </button>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={cveQuery}
+                              onChange={(e) => setCveQuery(e.target.value)}
+                              placeholder="CVE-YYYY-NNNN"
+                              className="flex-1 bg-black border border-zinc-800 rounded-xl py-2 px-3 text-[11px] text-zinc-200"
+                            />
+                            <button
+                              onClick={handleCveLookup}
+                              disabled={isCveLoading || !cveQuery.trim()}
+                              className="px-3 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase disabled:opacity-50"
+                            >
+                              {isCveLoading ? 'Loading' : 'Lookup'}
+                            </button>
+                          </div>
+
+                          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl text-[11px]">
+                            {!cveResult && <p className="text-zinc-500">No cached list is shown. Use lookup to pull live CVE data.</p>}
+                            {cveResult?.error && <p className="text-red-400">{cveResult.error}</p>}
+                            {cveResult?.id && (
+                              <>
+                                <p className="text-red-400 font-black">{cveResult.id}</p>
+                                <p className="text-zinc-300 mt-2">Severity: {cveResult.severity}</p>
+                                <p className="text-zinc-400 mt-2">{cveResult.description}</p>
+                                <p className="text-zinc-600 mt-2">Source: {cveResult.source}</p>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -678,18 +689,18 @@ export default function App() {
                       </div>
 
                       <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
-                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Recon Modules</h3>
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Live Recon Coverage</h3>
                         <div className="grid grid-cols-1 gap-3">
                           {[
-                            { name: 'Subdomain Brute', active: true },
-                            { name: 'Port Discovery', active: true },
-                            { name: 'WAF Bypass Test', active: false },
-                            { name: 'Cloud Bucket Scan', active: true },
-                            { name: 'Tech Stack ID', active: true },
+                            { name: 'DNS A Records', count: (scanResults?.findings || []).filter((f: any) => f.type === 'DNS' && String(f.value || '').includes('A Records')).length },
+                            { name: 'DNS MX Records', count: (scanResults?.findings || []).filter((f: any) => f.type === 'Mail').length },
+                            { name: 'DNS TXT Records', count: (scanResults?.findings || []).filter((f: any) => f.type === 'DNS' && String(f.value || '').includes('TXT Records')).length },
+                            { name: 'Header Checks', count: (scanResults?.findings || []).filter((f: any) => f.type === 'Header' || f.type === 'Vulnerability').length },
+                            { name: 'Probe Errors', count: (scanResults?.findings || []).filter((f: any) => f.type === 'Error').length },
                           ].map((mod, i) => (
                             <div key={i} className="flex items-center justify-between p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
                               <span className="text-[10px] font-bold text-zinc-400 uppercase">{mod.name}</span>
-                              <div className={`w-2 h-2 rounded-full ${mod.active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-zinc-800'}`} />
+                              <span className="text-[10px] font-black text-zinc-200">{mod.count}</span>
                             </div>
                           ))}
                         </div>
@@ -710,88 +721,64 @@ export default function App() {
                 >
                   <div className="flex items-center justify-between border-b border-zinc-900 pb-6">
                     <h2 className="text-3xl font-black text-zinc-100 uppercase tracking-tighter italic">Impact Lab</h2>
-                    <button className="px-6 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg">Generate Report</button>
+                    <span className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-bold uppercase tracking-widest text-zinc-400">Live Evidence Mode</span>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8 space-y-8">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                          <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Base CVSS Score</label>
-                          <div className="flex items-center space-x-4">
-                            <input type="range" min="0" max="10" step="0.1" className="flex-1 accent-red-600" />
-                            <span className="text-2xl font-black text-red-500">8.4</span>
-                          </div>
+                    <div className="lg:col-span-2 bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8 space-y-6">
+                      <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest">Evidence Summary</h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                          <p className="text-[9px] text-zinc-500 font-black uppercase">Target</p>
+                          <p className="text-xs font-bold text-zinc-200 mt-2 break-all">{scanResults?.target || 'No scan yet'}</p>
                         </div>
-                        <div className="space-y-4">
-                          <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Exploitability</label>
-                          <div className="flex space-x-2">
-                            {['Low', 'Medium', 'High', 'Critical'].map(level => (
-                              <button key={level} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase border ${level === 'High' ? 'bg-red-600 border-red-600 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-600'}`}>
-                                {level}
-                              </button>
-                            ))}
-                          </div>
+                        <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                          <p className="text-[9px] text-zinc-500 font-black uppercase">High Risk Findings</p>
+                          <p className="text-2xl font-black text-red-500 mt-1">{intelStatus?.verifiedFlaws ?? 0}</p>
+                        </div>
+                        <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                          <p className="text-[9px] text-zinc-500 font-black uppercase">Threat Level</p>
+                          <p className="text-2xl font-black text-amber-400 mt-1">{intelStatus?.threatLevel || 'UNKNOWN'}</p>
                         </div>
                       </div>
 
-                      <div className="space-y-4">
-                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Impact Description</label>
-                        <textarea 
-                          rows={6}
-                          placeholder="Describe the business and technical impact of the vulnerability..."
-                          className="w-full bg-black border border-zinc-800 rounded-2xl p-6 text-xs text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold leading-relaxed"
-                        />
+                      <div className="p-6 bg-black/40 border border-zinc-800 rounded-2xl">
+                        <p className="text-[10px] text-zinc-500 font-black uppercase">Current Recommendation</p>
+                        <p className="text-xs text-zinc-300 mt-3">{analysisResults?.recommendation || 'Run a live scan and analysis to generate actionable remediation guidance.'}</p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-[10px] text-zinc-500 font-black uppercase">Top Strategies</p>
+                        {analysisResults?.strategies?.length ? (
+                          analysisResults.strategies.slice(0, 3).map((strat: any, i: number) => (
+                            <div key={i} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                              <p className="text-[11px] font-black text-zinc-100">{strat.name}</p>
+                              <p className="text-[10px] text-zinc-400 mt-1">Vector: {strat.vector} • Complexity: {strat.complexity} • Impact: {strat.impact}</p>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl text-[11px] text-zinc-500">No strategy data yet.</div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
-                      <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-8">Active Impact Data</h3>
-                      {exploitImpact?.status === 'SUCCESS' ? (
-                        <div className="space-y-6">
-                          <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl">
-                            <p className="text-[9px] text-emerald-500 font-black uppercase mb-1">Access Level</p>
-                            <p className="text-lg font-black text-zinc-100">{exploitImpact.access}</p>
-                          </div>
-                          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
-                            <p className="text-[9px] text-zinc-500 font-black uppercase mb-1">Data Exfiltrated</p>
-                            <p className="text-xs font-bold text-zinc-300">{exploitImpact.dataExfiltrated}</p>
-                          </div>
-                          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
-                            <p className="text-[9px] text-zinc-500 font-black uppercase mb-1">Session ID</p>
-                            <p className="text-xs font-mono text-red-500">{exploitImpact.sessionID}</p>
-                          </div>
+                    <div className="space-y-8">
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Execution State</h3>
+                        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                          <p className="text-[10px] font-black uppercase text-amber-300">Executor Offline</p>
+                          <p className="text-[11px] text-zinc-300 mt-2">Active exploit runtime is disabled in this repository build. Attach a controlled executor service to enable verified operations.</p>
                         </div>
-                      ) : (
-                        <div className="p-12 border border-dashed border-zinc-800 rounded-2xl text-center">
-                          <p className="text-[10px] text-zinc-600 font-bold uppercase italic">No active impact data. Execute a successful exploit in the PoC Forge.</p>
-                        </div>
-                      )}
-                    </div>
+                      </div>
 
-                    <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
-                      <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-8">Impact Metrics</h3>
-                      <div className="space-y-8">
-                        {[
-                          { label: 'Financial Risk', value: 85, color: 'bg-red-600' },
-                          { label: 'Reputation Damage', value: 92, color: 'bg-red-600' },
-                          { label: 'Compliance Violation', value: 64, color: 'bg-amber-600' },
-                          { label: 'Operational Downtime', value: 78, color: 'bg-red-600' },
-                        ].map((metric, i) => (
-                          <div key={i} className="space-y-2">
-                            <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                              <span className="text-zinc-500">{metric.label}</span>
-                              <span className="text-zinc-200">{metric.value}%</span>
-                            </div>
-                            <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
-                              <motion.div 
-                                initial={{ width: 0 }}
-                                animate={{ width: `${metric.value}%` }}
-                                className={`h-full ${metric.color}`}
-                              />
-                            </div>
-                          </div>
-                        ))}
+                      <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8">
+                        <h3 className="text-xs font-black text-zinc-100 uppercase tracking-widest mb-6">Last Execution Response</h3>
+                        {exploitImpact ? (
+                          <pre className="text-[10px] text-zinc-300 bg-black/40 border border-zinc-800 rounded-xl p-4 overflow-auto whitespace-pre-wrap">{JSON.stringify(exploitImpact, null, 2)}</pre>
+                        ) : (
+                          <p className="text-[11px] text-zinc-500">No execution response captured.</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -812,12 +799,17 @@ export default function App() {
                       <button className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">Templates</button>
                       <button 
                         onClick={handleExecuteExploit}
-                        disabled={isExecuting || !forgeTarget || !forgePayload}
+                        disabled={isExecuting || !forgeTarget || !forgePayload || !approvedBy.trim() || !approvalConfirmed}
                         className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-500 transition-all shadow-lg disabled:opacity-50"
                       >
                         {isExecuting ? 'Executing...' : 'Execute Exploit'}
                       </button>
                     </div>
+                  </div>
+
+                  <div className="bg-emerald-500/10 border border-emerald-600/30 rounded-2xl p-4">
+                    <p className="text-[10px] text-emerald-300 font-black uppercase tracking-widest">Authorized Security Ops Mode</p>
+                    <p className="text-[11px] text-zinc-400 mt-2">This lab is configured for expert recon and controlled vulnerability exploitation approved by you.</p>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -851,6 +843,26 @@ export default function App() {
                       </div>
 
                       <div className="space-y-4">
+                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Authorization Control</label>
+                        <input
+                          type="text"
+                          value={approvedBy}
+                          onChange={(e) => setApprovedBy(e.target.value)}
+                          placeholder="Approved by"
+                          className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] text-zinc-300 focus:outline-none focus:border-red-600 transition-all font-bold"
+                        />
+                        <label className="flex items-center gap-3 text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                          <input
+                            type="checkbox"
+                            checked={approvalConfirmed}
+                            onChange={(e) => setApprovalConfirmed(e.target.checked)}
+                            className="h-4 w-4 accent-red-600"
+                          />
+                          I confirm this operation is approved and in scope.
+                        </label>
+                      </div>
+
+                      <div className="space-y-4">
                         <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Custom Payload</label>
                         <textarea 
                           rows={8}
@@ -871,19 +883,14 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex-1 bg-black border border-zinc-800 rounded-2xl p-6 font-mono text-[11px] text-emerald-500 overflow-auto min-h-[300px] leading-relaxed">
-                        <span className="text-zinc-600"># Jusclick-TEQiQ PoC Generator</span><br />
-                        <span className="text-zinc-600"># Operator: argila</span><br />
-                        <span className="text-zinc-600"># Target: internal-api.levelace.com</span><br /><br />
-                        <span className="text-blue-400">import</span> requests<br />
-                        <span className="text-blue-400">import</span> sys<br /><br />
-                        <span className="text-purple-400">def</span> <span className="text-amber-400">exploit</span>(target):<br />
-                        &nbsp;&nbsp;payload = <span className="text-emerald-300">"'; exec(atob('...')); --"</span><br />
-                        &nbsp;&nbsp;headers = {'{'}'User-Agent': 'TEQiQ-Impact-Scanner'{'}'}<br />
-                        &nbsp;&nbsp;r = requests.post(target, data={'{'}'id': payload{'}'}, headers=headers)<br />
-                        &nbsp;&nbsp;<span className="text-purple-400">if</span> r.status_code == <span className="text-red-400">200</span>:<br />
-                        &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-400">print</span>(<span className="text-emerald-300">"[+] Impact Verified: RCE Successful"</span>)<br /><br />
-                        <span className="text-purple-400">if</span> __name__ == <span className="text-emerald-300">"__main__"</span>:<br />
-                        &nbsp;&nbsp;exploit(sys.argv[1])
+                        <p className="text-zinc-500">No mock payload is rendered in this lab.</p>
+                        <p className="mt-4">Operation profile</p>
+                        <p className="text-zinc-400 mt-2">type: <span className="text-zinc-200">{forgeType || 'unset'}</span></p>
+                        <p className="text-zinc-400">target: <span className="text-zinc-200 break-all">{forgeTarget || 'unset'}</span></p>
+                        <p className="text-zinc-400">approvedBy: <span className="text-zinc-200">{approvedBy || 'unset'}</span></p>
+                        <p className="text-zinc-400">scopeConfirmed: <span className="text-zinc-200">{approvalConfirmed ? 'true' : 'false'}</span></p>
+                        <p className="text-zinc-400">payloadLength: <span className="text-zinc-200">{forgePayload.length}</span></p>
+                        <p className="text-zinc-500 mt-6">Connect a real executor service to run controlled operations.</p>
                       </div>
                     </div>
                   </div>
@@ -903,7 +910,7 @@ export default function App() {
                 <span className="w-1.5 h-1.5 bg-blue-600 rounded-full mr-3 shadow-[0_0_8px_rgba(37,99,235,0.5)]" />
                 LINK: ENCRYPTED
               </span>
-              <span className="hidden sm:inline">NODES: 1,204 ACTIVE</span>
+              <span className="hidden sm:inline">NODES: {intelStatus?.activeNodes?.toLocaleString() || '0'} ACTIVE</span>
             </div>
             <div className="flex items-center space-x-6">
               <span className="hidden sm:inline">SIG: argila@LEVELACE</span>
